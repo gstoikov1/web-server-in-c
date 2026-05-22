@@ -9,7 +9,8 @@ typedef enum {
     HTTP_GET,
     HTTP_POST,
     HTTP_PATCH,
-    HTTP_DELETE
+    HTTP_DELETE,
+    HTTP_UNKNOWN
 } HttpMethod;
 
 typedef struct {
@@ -44,8 +45,6 @@ int main(void) {
         char buffer[4096] = {0};
         int bytesReceived = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
 
-        printf("%d", bytesReceived);
-
         if (bytesReceived <= 0) {
             closesocket(client_fd);
             continue;
@@ -64,6 +63,8 @@ int main(void) {
         size_t lineLength = lineEnd - buffer;
 
         char firstLine[1024];
+        char method[10];
+        char path[1024];
 
         if (lineLength >= sizeof(firstLine)) {
             printf("Request line too long\n");
@@ -74,7 +75,48 @@ int main(void) {
         memcpy(firstLine, buffer, lineLength);
         firstLine[lineLength] = '\0';
 
+        char *methodEnd = strchr(firstLine, ' ');
+
+        if (methodEnd == NULL) {
+            printf("Invalid request line: missing method separator\n");
+            closesocket(client_fd);
+            continue;
+        }
+
+        size_t methodLength = methodEnd - firstLine;
+
+        if (methodLength >= sizeof(method)) {
+            printf("HTTP method too long\n");
+            closesocket(client_fd);
+            continue;
+        }
+
+        memcpy(method, firstLine, methodLength);
+        method[methodLength] = '\0';
+
+        char *pathStart = methodEnd + 1;
+        char *pathEnd = strchr(pathStart, ' ');
+
+        if (pathEnd == NULL) {
+            printf("Invalid request line: missing path separator\n");
+            closesocket(client_fd);
+            continue;
+        }
+
+        size_t pathLength = pathEnd - pathStart;
+
+        if (pathLength >= sizeof(path)) {
+            printf("Path too long\n");
+            closesocket(client_fd);
+            continue;
+        }
+
+        memcpy(path, pathStart, pathLength);
+        path[pathLength] = '\0';
+
         printf("First line: %s\n", firstLine);
+        printf("Http Method: %s\n", method);
+        printf("Path: %s\n", path);
 
         const char *response = "HTTP/1.1 200 OK\r\n"
                                "Content-Type: text/plain\r\n"
@@ -103,4 +145,28 @@ void map(HttpMethod method, const char *path, void (*handler)(void)) {
     mappings[mappingsCount].handler = handler;
 
     mappingsCount++;
+}
+
+HttpMethod mapHttpMethodToEnum(const char *method) {
+    if (method == NULL) {
+        return HTTP_UNKNOWN;
+    }
+
+    if (strcmp(method, "GET") == 0) {
+        return HTTP_GET;
+    }
+
+    if (strcmp(method, "POST") == 0) {
+        return HTTP_POST;
+    }
+
+    if (strcmp(method, "PATCH") == 0) {
+        return HTTP_PATCH;
+    }
+
+    if (strcmp(method, "DELETE") == 0) {
+        return HTTP_DELETE;
+    }
+
+    return HTTP_UNKNOWN;
 }
