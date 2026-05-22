@@ -1,0 +1,1 @@
+gcc main.c -o server.exe -lws2_32
