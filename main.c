@@ -5,6 +5,10 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
+#define MAX_HEADERS 64
+#define MAX_HEADER_NAME_LENGTH 128
+#define MAX_HEADER_VALUE_LENGTH 1024
+
 typedef enum {
     HTTP_GET,
     HTTP_POST,
@@ -22,15 +26,28 @@ typedef struct {
 typedef struct {
     HttpMethod method;
     const char *path;
+} HttpRequestLine;
+
+typedef struct {
+    char name[MAX_HEADER_NAME_LENGTH];
+    char value[MAX_HEADER_VALUE_LENGTH];
+} HttpHeader;
+
+typedef struct {
+    HttpRequestLine requestLine;
+    HttpHeader headers[MAX_HEADERS];
+    int headersCount;
+    // HttpBody body
 } HttpRequest;
 
-int extractHttpRequest(HttpRequest *request, const char *incomingData, int size);
+int extractHttpRequestLine(HttpRequestLine *request, const char *incomingData, int size);
 HttpMethod mapHttpMethodToEnum(const char *method);
-int findHttpMapping(HttpMapping *mapping, HttpRequest *req);
+int findHttpMapping(HttpMapping *mapping, HttpRequestLine *req);
 void makeMappings();
 void handleGetUsers();
 void handleGetRoot();
 const char *httpMethodToString(HttpMethod method);
+int extractHeadersFromRequest(HttpHeader *headers, int *headersCount, const char *request);
 
 // TODO: switch this to a hashmap
 HttpMapping mappings[1024] = {0};
@@ -66,9 +83,13 @@ int main(void) {
             continue;
         }
         buffer[bytesReceived] = '\0';
-        HttpRequest request;
-
-        if (extractHttpRequest(&request, buffer, bytesReceived) != 0) {
+        // printf("Request:\n%s", buffer);
+        HttpHeader headers[1024] = {0};
+        int headersCount = 0;
+        extractHeadersFromRequest(headers, &headersCount, buffer);
+        HttpRequestLine request;
+        printf("HeadersCount:%d\n", headersCount);
+        if (extractHttpRequestLine(&request, buffer, bytesReceived) != 0) {
             closesocket(client_fd);
             continue;
         }
@@ -109,7 +130,7 @@ void map(HttpMethod method, const char *path, void (*handler)(void)) {
     mappingsCount++;
 }
 
-int extractHttpRequest(HttpRequest *request, const char *incomingData, int size) {
+int extractHttpRequestLine(HttpRequestLine *request, const char *incomingData, int size) {
     char *lineEnd = strstr(incomingData, "\r\n");
 
     if (lineEnd == NULL) {
@@ -166,9 +187,9 @@ int extractHttpRequest(HttpRequest *request, const char *incomingData, int size)
     memcpy(path, pathStart, pathLength);
     path[pathLength] = '\0';
 
-    printf("First line: %s\n", firstLine);
-    printf("Http Method: %s\n", method);
-    printf("Path: %s\n", path);
+    // printf("First line: %s\n", firstLine);
+    // printf("Http Method: %s\n", method);
+    // printf("Path: %s\n", path);
 
     HttpMethod HttpMethod = mapHttpMethodToEnum(method);
 
@@ -200,12 +221,12 @@ HttpMethod mapHttpMethodToEnum(const char *method) {
     return HTTP_UNKNOWN;
 }
 
-int findHttpMapping(HttpMapping *mapping, HttpRequest *req) {
+int findHttpMapping(HttpMapping *mapping, HttpRequestLine *req) {
     for (int i = 0; i < mappingsCount; i++) {
         HttpMapping *curr = &mappings[i];
 
         if (curr->method == req->method && strcmp(curr->path, req->path) == 0) {
-            printf("found a mapping for %s %s\n", httpMethodToString(req->method), req->path);
+            // printf("found a mapping for %s %s\n", httpMethodToString(req->method), req->path);
             *mapping = *curr;
             return 0;
         }
@@ -235,5 +256,84 @@ const char *httpMethodToString(HttpMethod method) {
     }
 }
 
-void handleGetUsers() { printf("Handling GET /users call\n"); }
-void handleGetRoot() { printf("Handling GET / call\n"); }
+int extractHeadersFromRequest(HttpHeader *headers, int *headersCount, const char *request) {
+    const char *requestLineEnd = strstr(request, "\r\n");
+
+    if (requestLineEnd == NULL) {
+        return -1;
+    }
+
+    const char *headersStart = requestLineEnd + 2;
+    const char *headersEnd = strstr(headersStart, "\r\n\r\n");
+
+    if (headersEnd == NULL) {
+        return -1;
+    }
+
+    const char *currHeader = headersStart;
+    int count = 0;
+
+    while (count < MAX_HEADERS && currHeader < headersEnd) {
+        const char *currHeaderEnd = strstr(currHeader, "\r\n");
+
+        if (currHeaderEnd == NULL || currHeaderEnd > headersEnd) {
+            return -1;
+        }
+
+        size_t lineLength = currHeaderEnd - currHeader;
+
+        if (lineLength == 0) {
+            break;
+        }
+
+        const char *colon = memchr(currHeader, ':', lineLength);
+
+        if (colon == NULL) {
+            printf("Invalid header line\n");
+            return -1;
+        }
+
+        size_t nameLength = colon - currHeader;
+
+        const char *valueStart = colon + 1;
+
+        while (valueStart < currHeaderEnd && *valueStart == ' ') {
+            valueStart++;
+        }
+
+        size_t valueLength = currHeaderEnd - valueStart;
+
+        if (nameLength >= MAX_HEADER_NAME_LENGTH) {
+            printf("Header name too long\n");
+            return -1;
+        }
+
+        if (valueLength >= MAX_HEADER_VALUE_LENGTH) {
+            printf("Header value too long\n");
+            return -1;
+        }
+
+        memcpy(headers[count].name, currHeader, nameLength);
+        headers[count].name[nameLength] = '\0';
+
+        memcpy(headers[count].value, valueStart, valueLength);
+        headers[count].value[valueLength] = '\0';
+
+        printf("Header: %s = %s\n", headers[count].name, headers[count].value);
+
+        count++;
+
+        currHeader = currHeaderEnd + 2;
+    }
+
+    *headersCount = count;
+
+    return 0;
+}
+
+void handleGetUsers() {
+    // printf("Handling GET /users call\n");
+}
+void handleGetRoot() {
+    //  printf("Handling GET / call\n");
+}
