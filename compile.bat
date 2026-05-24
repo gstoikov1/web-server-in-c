@@ -1,1 +1,1 @@
-gcc main.c -o server.exe -lws2_32
+gcc server.c http.c -o server.exe -lws2_32
