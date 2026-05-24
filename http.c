@@ -1,5 +1,6 @@
 #include "http.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 const char *httpMethodToString(HttpMethod method) {
@@ -93,7 +94,7 @@ int extractHeadersFromRequest(HttpHeader *headers, int *headersCount, const char
     return 0;
 }
 
-int extractHttpRequestLine(HttpRequestLine *request, const char *incomingData, int size) {
+int extractHttpRequestLine(HttpRequestLine *request, const char *incomingData) {
     char *lineEnd = strstr(incomingData, "\r\n");
 
     if (lineEnd == NULL) {
@@ -183,4 +184,72 @@ HttpMethod mapHttpMethodToEnum(const char *method) {
     }
 
     return HTTP_UNKNOWN;
+}
+
+int extractHttpBody(HttpBody *body, const char *request, int requestSize, int contentLength) {
+    const char *httpHeadersEnd = strstr(request, "\r\n\r\n");
+
+    if (contentLength < 0) {
+        return -1;
+    }
+
+    if (contentLength >= MAX_BODY_LENGTH) {
+        printf("Body too large\n");
+        return -1;
+    }
+
+    if (httpHeadersEnd == NULL) {
+        return -1;
+    }
+
+    const char *bodyStart = httpHeadersEnd + 4;
+
+    int bytesBeforeBody = (int)(bodyStart - request);
+    int availableBodyBytes = requestSize - bytesBeforeBody;
+
+    if (availableBodyBytes < contentLength) {
+        printf("Incomplete body\n");
+        return -1;
+    }
+
+    memcpy(body->data, bodyStart, contentLength);
+    body->data[contentLength] = '\0';
+    body->size = contentLength;
+
+    return 0;
+}
+
+int extractHttpRequest(HttpRequest *request, const char *data, const int dataSize) {
+    if (extractHttpRequestLine(&request->requestLine, data) != 0) {
+        return -1;
+    }
+
+    if (extractHeadersFromRequest(request->headers, &request->headersCount, data) != 0) {
+        return -1;
+    }
+
+    const char *contentLengthValue =
+        getHeaderValue(request->headers, request->headersCount, "Content-Length");
+
+    int contentLength = 0;
+
+    if (contentLengthValue != NULL) {
+        contentLength = atoi(contentLengthValue);
+    }
+
+    if (extractHttpBody(&request->body, data, dataSize, contentLength) != 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+const char *getHeaderValue(HttpHeader *headers, int headersCount, const char *name) {
+    for (int i = 0; i < headersCount; i++) {
+        if (strcmp(headers[i].name, name) == 0) {
+            return headers[i].value;
+        }
+    }
+
+    return NULL;
 }

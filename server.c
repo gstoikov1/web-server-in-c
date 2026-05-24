@@ -10,6 +10,14 @@ int findHttpMapping(HttpMapping *mapping, HttpRequestLine *req);
 void makeMappings();
 void handleGetUsers();
 void handleGetRoot();
+void map(HttpMethod method, const char *path, void (*handler)(void));
+void printRequest(HttpRequest *req);
+
+const char *response = "HTTP/1.1 200 OK\r\n"
+                       "Content-Type: text/plain\r\n"
+                       "Content-Length: 13\r\n"
+                       "\r\n"
+                       "Hello, world!";
 
 // TODO: switch this to a hashmap
 HttpMapping mappings[1024] = {0};
@@ -44,33 +52,22 @@ int main(void) {
             closesocket(client_fd);
             continue;
         }
+
+        if (bytesReceived == sizeof(buffer) - 1) {
+            printf("Request too large or possibly truncated\n");
+            closesocket(client_fd);
+            continue;
+        }
+
         buffer[bytesReceived] = '\0';
-        // printf("Request:\n%s", buffer);
-        HttpHeader headers[1024] = {0};
-        int headersCount = 0;
-        extractHeadersFromRequest(headers, &headersCount, buffer);
-        HttpRequestLine request;
-        printf("HeadersCount:%d\n", headersCount);
-        if (extractHttpRequestLine(&request, buffer, bytesReceived) != 0) {
-            closesocket(client_fd);
-            continue;
-        }
-        HttpMapping mapping;
 
-        if (findHttpMapping(&mapping, &request) != 0) {
-            closesocket(client_fd);
-            continue;
-        }
-
-        mapping.handler();
-        const char *response = "HTTP/1.1 200 OK\r\n"
-                               "Content-Type: text/plain\r\n"
-                               "Content-Length: 13\r\n"
-                               "\r\n"
-                               "Hello, world!";
-
-        send(client_fd, response, (int)strlen(response), 0);
-        closesocket(client_fd);
+        HttpRequest request = {0};
+        extractHttpRequest(&request, buffer, bytesReceived);
+        printRequest(&request);
+        send(client_fd, response, (int)strlen(response), 0); // HttpRequestLine requestLine;
+        closesocket(client_fd);                              // HttpHeader headers[MAX_HEADERS];
+                                                             // int headersCount;
+                                                             // HttpBody body;
     }
 
     closesocket(server_fd);
@@ -110,6 +107,20 @@ int findHttpMapping(HttpMapping *mapping, HttpRequestLine *req) {
 void makeMappings() {
     map(HTTP_GET, "/", handleGetRoot);
     map(HTTP_GET, "/users", handleGetUsers);
+}
+
+void printRequest(HttpRequest *req) {
+    printf("*******REQUEST_LINE*******\n");
+    printf("METHOD: %s | PATH: %s\n", httpMethodToString(req->requestLine.method),
+           req->requestLine.path);
+
+    printf("*******HTTP_HEADERS*******\n");
+    for (int i = 0; i < req->headersCount; i++) {
+        printf("%d. NAME:%s VALUE:%s\n", i + 1, req->headers[i].name, req->headers[i].value);
+    }
+
+    printf("*******HTTP_BODY*******\n");
+    printf("%s\n", req->body);
 }
 
 void handleGetUsers() {
