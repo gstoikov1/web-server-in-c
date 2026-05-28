@@ -158,7 +158,7 @@ int extractHttpRequestLine(HttpRequestLine *request, const char *incomingData) {
     HttpMethod HttpMethod = mapHttpMethodToEnum(method);
 
     request->method = HttpMethod;
-    request->path = path;
+    strncpy(request->path, path, MAX_PATH_LENGTH);
     return 0;
 }
 

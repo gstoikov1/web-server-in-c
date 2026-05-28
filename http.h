@@ -5,6 +5,7 @@
 #define MAX_HEADER_NAME_LENGTH 128
 #define MAX_HEADER_VALUE_LENGTH 1024
 #define MAX_BODY_LENGTH 4096
+#define MAX_PATH_LENGTH 1024
 
 typedef enum {
     HTTP_GET,
@@ -16,13 +17,7 @@ typedef enum {
 
 typedef struct {
     HttpMethod method;
-    const char *path;
-    void (*handler)(void);
-} HttpMapping;
-
-typedef struct {
-    HttpMethod method;
-    const char *path;
+    char path[MAX_PATH_LENGTH];
 } HttpRequestLine;
 
 typedef struct {
